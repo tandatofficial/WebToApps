@@ -29,6 +29,8 @@ jobs:
             -emit-executable \
             QuickWebApp.swift \
             BookmarkStore.swift \
+            ExtensionStore.swift \
+            ExtensionSettingsView.swift \
             AdBlockEngine.swift \
             WebBrowserView.swift \
             YouTubeContainerView.swift \

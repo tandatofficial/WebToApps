@@ -5,12 +5,7 @@ class AdBlockEngine {
     static let shared = AdBlockEngine()
     var compiledRules: WKContentRuleList?
 
-    // MARK: - ULTIMATE ADGUARD ENGINE (CSS STYLESHEET + DOM DESTROYER + PROTOTYPE HIJACK)
-    // Hoạt động trên cả trang chính LẪN tất cả các <iframe> lồng nhau (embed video player)
-    
-    // 1. CSS ép tàng hình toàn bộ banner ngay từ tầng render đầu tiên (không kịp nhấp nháy)
     let aggressiveAdHideCSS = """
-    /* Banner cờ bạc, floating, sticky, popup */
     .float-ck, .banner-left, .banner-right, .ads-sticky, #popup-ads,
     #banner-bottom, .catfish-banner, .balloon, #ads_fixed, .floating-ads,
     div[id*='banner'], div[class*='banner'], div[id*='adv'], div[class*='adv'],
@@ -33,110 +28,53 @@ class AdBlockEngine {
     }
     """
 
-    // 2. Script can thiệp trực tiếp vào HTMLMediaElement Prototype (cấp trình phát Video)
-    let deepVideoAdKillerScript = """
+    let coreEngineJS = """
     (function() {
         'use strict';
-
-        // --- A. BẺ GÃY HÀNH VI TỰ CHÈN VIDEO QUẢNG CÁO QUA HTMLVideoElement PROTOTYPE ---
-        // Bắt mọi video cố tình nạp link quảng cáo qua .src hoặc setAttribute('src')
         const isAdUrl = (url) => {
             if (!url || typeof url !== 'string') return false;
             return /(vast|vpaid|ima3|doubleclick|googleads|gmsg|pagead|preroll|midroll|ads\\.xml|ad\\.m3u8|sponsor|promo|bet88|kubet|sunwin|nohu|casino)/i.test(url);
         };
 
+        // Bẻ gãy gán link video quảng cáo
         const originalSrcDescriptor = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'src');
         if (originalSrcDescriptor && originalSrcDescriptor.set) {
             Object.defineProperty(HTMLMediaElement.prototype, 'src', {
                 set: function(val) {
                     if (isAdUrl(val)) {
-                        console.log("[AdGuard Deep Shield] Chặn gán src video quảng cáo:", val);
-                        return; // Vứt bỏ, không cho player nạp video quảng cáo
+                        console.log("[AdGuard Extension] Blocked Video Ad URL:", val);
+                        return;
                     }
                     return originalSrcDescriptor.set.call(this, val);
                 },
-                get: function() {
-                    return originalSrcDescriptor.get.call(this);
-                }
+                get: function() { return originalSrcDescriptor.get.call(this); }
             });
         }
 
-        // Khống chế HTMLVideoElement.play(): Nếu video đang phát là video quảng cáo ngắn (<= 35s), tua sạch ngay
+        // Tự động tua hết video quảng cáo
         const originalPlay = HTMLMediaElement.prototype.play;
         HTMLMediaElement.prototype.play = function() {
-            const video = this;
-            const src = video.currentSrc || video.src || '';
-            const duration = video.duration;
-
-            // Kiểm tra nếu là video quảng cáo
-            if (isAdUrl(src) || (duration > 0 && duration <= 35 && (video.closest('[class*="ad"]') || video.closest('[id*="ad"]')))) {
-                console.log("[AdGuard Deep Shield] Ép tua sạch quảng cáo đang phát:", src);
-                video.muted = true;
-                video.currentTime = duration || 9999;
+            const v = this;
+            const src = v.currentSrc || v.src || '';
+            const d = v.duration;
+            if (isAdUrl(src) || (d > 0 && d <= 35 && (v.closest('[class*="ad"]') || v.closest('[id*="ad"]')))) {
+                v.muted = true;
+                v.currentTime = d || 9999;
                 return Promise.resolve();
             }
             return originalPlay.apply(this, arguments);
         };
 
-        // --- B. VÔ HIỆU HÓA FETCH & XHR CHỨA QUẢNG CÁO (KỂ CẢ TRONG IFRAME EMBED) ---
-        const originalFetch = window.fetch;
-        window.fetch = function() {
-            const url = arguments[0];
-            if (typeof url === 'string' && isAdUrl(url)) {
-                return Promise.reject(new Error("Blocked by AdGuard Video Shield"));
-            }
-            return originalFetch.apply(this, arguments);
+        // Chặn window.open và popup nhảy tab
+        window.open = function() { return null; };
+
+        // Xóa sạch phần tử quảng cáo liên tục
+        const wipe = () => {
+            document.querySelectorAll(".float-ck, .banner-left, .banner-right, #popup-ads, .floating-ads, a[href*='bet'], a[href*='casino'], .jw-ads, .player-ads, #ad-overlay, .adsbygoogle").forEach(e => e.remove());
+            document.querySelectorAll('.ytp-ad-skip-button, .jw-skip, .videojs-ad-skip').forEach(b => b.click());
         };
-
-        const originalXHROpen = XMLHttpRequest.prototype.open;
-        XMLHttpRequest.prototype.open = function(method, url) {
-            if (typeof url === 'string' && isAdUrl(url)) {
-                return;
-            }
-            return originalXHROpen.apply(this, arguments);
-        };
-
-        // --- C. HỦY DIỆT MỌI CỬA SỔ POPUP & CLICKJACKING ---
-        window.open = function() {
-            console.log("[AdGuard Deep Shield] Chặn window.open popup!");
-            return null;
-        };
-
-        // --- D. MUTATION OBSERVER QUÉT LIÊN TỤC VÀ TIÊU DIỆT TẬN GỐC TỪNG ELEMENT QUẢNG CÁO ---
-        const removeAdsFromDocument = (doc) => {
-            if (!doc) return;
-            const badSelectors = [
-                ".float-ck", ".banner-left", ".banner-right", ".ads-sticky", "#popup-ads",
-                "#banner-bottom", ".catfish-banner", ".balloon", "#ads_fixed", ".floating-ads",
-                "a[href*='bet']", "a[href*='casino']", "a[href*='nohu']", "a[href*='taixiu']",
-                "a[href*='kubet']", "a[href*='shbet']", "a[href*='sunwin']", "a[href*='go88']",
-                ".adsbygoogle", "ytm-promoted-sparkles-web-renderer", "div[id^='ad_']",
-                ".jw-ads", ".jw-ad", ".player-ads", "#ad-overlay"
-            ];
-
-            try {
-                const nodes = doc.querySelectorAll(badSelectors.join(','));
-                nodes.forEach(n => {
-                    n.remove();
-                });
-            } catch(e) {}
-
-            // Click nút skip tự động
-            const skipBtns = doc.querySelectorAll('.ytp-ad-skip-button, .jw-skip, .videojs-ad-skip, [class*="skip"]');
-            skipBtns.forEach(btn => { try { btn.click(); } catch(e) {} });
-        };
-
-        // Quét trên toàn bộ Shadow DOM và nested iframes
-        setInterval(() => {
-            removeAdsFromDocument(document);
-            document.querySelectorAll('iframe').forEach(frame => {
-                try {
-                    removeAdsFromDocument(frame.contentDocument);
-                } catch(e) {} // Cross-origin frames đã được bảo vệ bởi script bơm độc lập
-            });
-        }, 150);
-
-        document.addEventListener('DOMContentLoaded', () => removeAdsFromDocument(document));
+        setInterval(wipe, 180);
+        document.addEventListener('DOMContentLoaded', wipe);
     })();
     """
 
@@ -145,7 +83,6 @@ class AdBlockEngine {
     }
 
     func compileRules() {
-        // Danh sách chặn cấp WebKit Network (chặn trước khi request rời khỏi máy)
         let blockJSON = """
         [
             {
@@ -171,11 +108,11 @@ class AdBlockEngine {
         """
 
         WKContentRuleListStore.default().compileContentRuleList(
-            forIdentifier: "AdGuardUltimateRules",
+            forIdentifier: "AdGuardExtensionRuleset",
             encodedContentRuleList: blockJSON
         ) { [weak self] ruleList, error in
             if let error = error {
-                print("[AdGuard] Compilation error: \(error)")
+                print("[AdGuard] Error: \(error)")
                 return
             }
             self?.compiledRules = ruleList
@@ -192,19 +129,23 @@ class AdBlockEngine {
             userContent.add(rules)
         }
 
-        // 1. Tiêm CSS diệt banner ngay từ đầu (chạy trên CẢ Frame chính lẫn IFrame phụ)
+        // 1. Inject Stylesheet CSS diệt banner
         let cssScript = """
         const style = document.createElement('style');
         style.type = 'text/css';
         style.innerHTML = `\(aggressiveAdHideCSS)`;
         document.head ? document.head.appendChild(style) : document.documentElement.appendChild(style);
         """
-        let userCSS = WKUserScript(source: cssScript, injectionTime: .atDocumentStart, forMainFrameOnly: false)
-        userContent.addUserScript(userCSS)
+        userContent.addUserScript(WKUserScript(source: cssScript, injectionTime: .atDocumentStart, forMainFrameOnly: false))
 
-        // 2. Tiêm Prototype Hijacker diệt Video Ads ngay từ thời điểm Document Start trên MỌI FRAME
-        let userJS = WKUserScript(source: deepVideoAdKillerScript, injectionTime: .atDocumentStart, forMainFrameOnly: false)
-        userContent.addUserScript(userJS)
+        // 2. Inject Core Prototype Video Ad Interceptor
+        userContent.addUserScript(WKUserScript(source: coreEngineJS, injectionTime: .atDocumentStart, forMainFrameOnly: false))
+
+        // 3. Inject các UserScripts / Extensions đang kích hoạt từ ExtensionStore
+        for script in ExtensionStore.shared.userScripts where script.isEnabled {
+            let userScript = WKUserScript(source: script.code, injectionTime: .atDocumentStart, forMainFrameOnly: false)
+            userContent.addUserScript(userScript)
+        }
 
         return config
     }

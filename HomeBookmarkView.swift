@@ -8,6 +8,7 @@ struct HomeBookmarkView: View {
     @State private var isEditing: Bool = false
     @State private var itemToDelete: Bookmark? = nil
     @State private var showDeleteConfirm: Bool = false
+    @State private var showExtensionSettings: Bool = false
 
     let columns = [
         GridItem(.adaptive(minimum: 74), spacing: 14)
@@ -31,7 +32,25 @@ struct HomeBookmarkView: View {
 
                     Spacer()
 
-                    // Edit / Done Button
+                    // Nút cài đặt tiện ích AdGuard Extension (như trên PC)
+                    Button(action: {
+                        showExtensionSettings = true
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "puzzlepiece.extension.fill")
+                                .font(.system(size: 12))
+                                .foregroundColor(Color(red: 0.18, green: 0.82, blue: 0.35))
+                            Text("AdGuard")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(Color(red: 0.18, green: 0.82, blue: 0.35))
+                        }
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 5)
+                        .background(Color(red: 0.18, green: 0.82, blue: 0.35).opacity(0.15))
+                        .cornerRadius(12)
+                    }
+
+                    // Nút Sửa / Xóa Bookmark
                     Button(action: {
                         withAnimation(.spring()) {
                             isEditing.toggle()
@@ -45,20 +64,6 @@ struct HomeBookmarkView: View {
                             .background(Color.white.opacity(0.08))
                             .cornerRadius(10)
                     }
-
-                    // Smart Shield Badge
-                    HStack(spacing: 4) {
-                        Image(systemName: "shield.checkerboard")
-                            .font(.system(size: 11))
-                            .foregroundColor(Color(red: 0.18, green: 0.82, blue: 0.35))
-                        Text("AdGuard")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(Color(red: 0.18, green: 0.82, blue: 0.35))
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(Color(red: 0.18, green: 0.82, blue: 0.35).opacity(0.12))
-                    .cornerRadius(12)
                 }
                 .padding(.horizontal, 18)
                 .padding(.top, 10)
@@ -66,7 +71,7 @@ struct HomeBookmarkView: View {
                 // Input Box
                 VStack(spacing: 8) {
                     HStack {
-                        TextField("Nhập URL (ví dụ: phimmoi, truyện, youtube)...", text: $inputURL)
+                        TextField("Nhập URL (ví dụ: m.youtube.com, phimmoi)...", text: $inputURL)
                             .font(.system(size: 14))
                             .padding(10)
                             .background(Color.white.opacity(0.08))
@@ -91,7 +96,7 @@ struct HomeBookmarkView: View {
                 .cornerRadius(16)
                 .padding(.horizontal, 16)
 
-                // Grid of icons with delete badge in Edit Mode & Context Menu
+                // Grid of icons
                 ScrollView(showsIndicators: false) {
                     LazyVGrid(columns: columns, spacing: 18) {
                         ForEach(store.bookmarks) { item in
@@ -141,7 +146,7 @@ struct HomeBookmarkView: View {
                                             .padding(3)
                                     }
 
-                                    // Delete badge (hiển thị khi bấm "Sửa" hoặc rung icon)
+                                    // Delete badge (hiển thị khi bấm "Sửa")
                                     if isEditing {
                                         Button(action: {
                                             itemToDelete = item
@@ -167,7 +172,6 @@ struct HomeBookmarkView: View {
                                     selectedBookmark = item
                                 }
                             }
-                            // Context Menu (Nhấn giữ icon để Xóa trực tiếp)
                             .contextMenu {
                                 Button(role: .destructive) {
                                     withAnimation {
@@ -186,11 +190,13 @@ struct HomeBookmarkView: View {
                 Spacer()
             }
         }
-        // Hộp thoại xác nhận xóa
+        .sheet(isPresented: $showExtensionSettings) {
+            ExtensionSettingsView()
+        }
         .alert(isPresented: $showDeleteConfirm) {
             Alert(
                 title: Text("Xác nhận xóa"),
-                message: Text("Bạn có chắc chắn muốn xóa bookmark '\(itemToDelete?.title ?? "")' không?"),
+                message: Text("Bạn có muốn xóa bookmark '\(itemToDelete?.title ?? "")' không?"),
                 primaryButton: .destructive(Text("Xóa")) {
                     if let target = itemToDelete {
                         withAnimation {
@@ -206,7 +212,6 @@ struct HomeBookmarkView: View {
                 if item.isSpecialApp {
                     YouTubeContainerView(initialURL: targetURL)
                 } else {
-                    // Standard In-App Browser with Smart AdGuard Shield
                     VStack(spacing: 0) {
                         HStack {
                             Button("Đóng") {
@@ -221,13 +226,13 @@ struct HomeBookmarkView: View {
                                 .foregroundColor(.white)
                             Spacer()
 
-                            HStack(spacing: 4) {
-                                Image(systemName: "shield.fill")
-                                    .foregroundColor(Color(red: 0.18, green: 0.82, blue: 0.35))
-                                    .font(.system(size: 12))
-                                Text("AdGuard")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundColor(Color(red: 0.18, green: 0.82, blue: 0.35))
+                            Button(action: { showExtensionSettings = true }) {
+                                HStack(spacing: 3) {
+                                    Image(systemName: "puzzlepiece.extension.fill")
+                                    Text("AdGuard")
+                                }
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(Color(red: 0.18, green: 0.82, blue: 0.35))
                             }
                         }
                         .padding()
