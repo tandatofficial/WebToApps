@@ -5,7 +5,7 @@ class AdBlockEngine {
     static let shared = AdBlockEngine()
     var compiledRules: WKContentRuleList?
 
-    // 1. CSS diệt sạch toàn bộ banner & khung overlay trên video
+    // 1. CSS diệt banner, watermark và overlay player
     let aggressiveAdHideCSS = """
     .float-ck, .banner-left, .banner-right, .ads-sticky, #popup-ads,
     #banner-bottom, .catfish-banner, .balloon, #ads_fixed, .floating-ads,
@@ -27,105 +27,75 @@ class AdBlockEngine {
     }
     """
 
-    // 2. CHUYÊN TRỊ IN-STREAM VIDEO ADS (Xử lý tận gốc 3 thủ thuật phát quảng cáo trong video)
-    let inStreamVideoAdKiller = """
+    // 2. NUCLEAR VIDEO AD KILLER (Can thiệp vào HLS.js, Video Source, và Timer)
+    let nuclearVideoAdScript = """
     (function() {
         'use strict';
 
-        // =========================================================================
-        // CHIÊU 1: TIÊU DIỆT GOOGLE IMA SDK & THƯ VIỆN QUẢNG CÁO CỦA PLAYER
-        // Hầu hết video player kiểm tra xem SDK IMA / VAST có sẵn không để phát video quảng cáo
-        // =========================================================================
-        window.google = window.google || {};
-        window.google.ima = {
-            AdsLoader: function() {
-                this.requestAds = function() {
-                    console.log("[AdGuard Video] Triệt tiêu requestAds của IMA SDK");
+        // --- CHIÊU ĐỘC 1: CAN THIỆP Hls.js ĐỂ BỎ QUA MỌI PHÂN ĐOẠN QUẢNG CÁO M3U8 ---
+        // Hầu hết các web phim hiện đại dùng Hls.js để stream video
+        const hookHls = () => {
+            if (window.Hls && window.Hls.prototype && !window.Hls.prototype._adHooked) {
+                window.Hls.prototype._adHooked = true;
+                const originalLoadSource = window.Hls.prototype.loadSource;
+                window.Hls.prototype.loadSource = function(url) {
+                    if (url && typeof url === 'string') {
+                        // Nếu nguồn là link quảng cáo, chặn ngay
+                        if (/ad|preroll|vast|bet|casino|promo/i.test(url) && !url.includes('master') && !url.includes('playlist')) {
+                            console.log("[Nuclear AdBlock] Chặn Hls.loadSource quảng cáo:", url);
+                            return;
+                        }
+                    }
+                    return originalLoadSource.apply(this, arguments);
                 };
-                this.contentComplete = function() {};
-                this.addEventListener = function() {};
-            },
-            AdsManagerLoadedEvent: { Type: { ADS_MANAGER_LOADED: 'adsManagerLoaded' } },
-            AdErrorEvent: { Type: { AD_ERROR: 'adError' } },
-            ViewMode: {},
-            AdDisplayContainer: function() {
-                this.initialize = function() {};
-                this.destroy = function() {};
-            },
-            AdsRequest: function() {},
-            settings: { setAutoPlayAdBreaks: function() {}, setVpaidMode: function() {} }
-        };
-
-        // =========================================================================
-        // CHIÊU 2: LỌC NỘI DUNG M3U8 (Chặn HLS Server-Side Ad Insertion)
-        // Khi web ghép đoạn video quảng cáo 15s vào playlist m3u8
-        // =========================================================================
-        const isAdUrl = (url) => {
-            if (!url || typeof url !== 'string') return false;
-            return /(vast|vpaid|ima3|doubleclick|googleads|gmsg|pagead|preroll|midroll|ads\\.xml|ad\\.m3u8|sponsor|promo|bet88|kubet|sunwin|nohu|casino)/i.test(url);
-        };
-
-        // Lọc fetch() trả về m3u8 playlist để gỡ bỏ các đoạn quảng cáo chèn thêm
-        const originalFetch = window.fetch;
-        window.fetch = async function() {
-            const url = arguments[0];
-            if (typeof url === 'string') {
-                if (isAdUrl(url)) {
-                    return Promise.reject(new Error("[AdGuard] Blocked Video Ad"));
-                }
             }
-            return originalFetch.apply(this, arguments);
         };
 
-        const originalOpen = XMLHttpRequest.prototype.open;
-        XMLHttpRequest.prototype.open = function(method, url) {
-            if (typeof url === 'string' && isAdUrl(url)) {
-                return;
-            }
-            return originalOpen.apply(this, arguments);
-        };
+        // --- CHIÊU ĐỘC 2: TỰ ĐỘNG THAY THẾ LINK VIDEO QUẢNG CÁO BẰNG LINK PHIM CHÍNH ---
+        // Khi trang web có 2 video tag (1 cái chạy quảng cáo đè lên 1 cái chạy phim)
+        const killAdVideos = () => {
+            const videoElements = document.querySelectorAll('video');
+            if (videoElements.length > 1) {
+                // Nếu có nhiều hơn 1 thẻ video, thường thẻ ở trên cùng là quảng cáo
+                videoElements.forEach((vid, index) => {
+                    const isTopAd = vid.closest('[class*="ad"]') || vid.closest('[id*="ad"]') || vid.style.zIndex > 10;
+                    if (isTopAd || (vid.duration > 0 && vid.duration <= 40)) {
+                        console.log("[Nuclear AdBlock] Xóa sổ thẻ video quảng cáo phụ");
+                        vid.pause();
+                        vid.src = "";
+                        vid.remove();
+                    }
+                });
+            } else if (videoElements.length === 1) {
+                const vid = videoElements[0];
+                const src = vid.currentSrc || vid.src || '';
+                const dur = vid.duration;
 
-        // =========================================================================
-        // CHIÊU 3: BỨT PHÁ BỘ ĐẾM GIỜ ĐẾM NGƯỢC (Ad Countdown Bypass) & TUA NGAY
-        // Trình phát video thường đếm ngược từ 15s về 0s rồi mới chịu đổi sang phim thật
-        // =========================================================================
-        const neutraliseVideoAds = () => {
-            const videos = document.querySelectorAll('video');
-            videos.forEach(v => {
-                // Nếu video đang phát có thời lượng ngắn (<= 35s) và không phải video phim dài
-                const duration = v.duration;
-                const isShort = duration > 0 && duration <= 35;
-                const inAdContainer = v.closest('.jw-ads') || v.closest('.videojs-ads') || v.closest('[class*="ad-"]') || v.closest('[id*="ad-"]');
-
-                if (isShort || inAdContainer || isAdUrl(v.currentSrc || v.src)) {
-                    console.log("[AdGuard Video] Phát hiện Video QC, đang cưỡng chế kết thúc...");
-                    v.muted = true;
-                    v.playbackRate = 16.0; // Phát với tốc độ x16
-                    v.currentTime = duration || 9999; // Tua đến giây cuối cùng
-                    
-                    // Phát sự kiện 'ended' giả lập để ép player chuyển sang video phim chính
+                // Nếu video đang phát là clip ngắn quảng cáo
+                if ((dur > 0 && dur <= 35) || vid.closest('.jw-ads') || vid.closest('.videojs-ads')) {
+                    vid.muted = true;
+                    // Ép tốc độ lên 16 lần
+                    vid.playbackRate = 16.0;
+                    // Tua về cuối
+                    vid.currentTime = dur || 9999;
                     try {
-                        v.dispatchEvent(new Event('ended'));
+                        vid.dispatchEvent(new Event('ended'));
+                        vid.dispatchEvent(new Event('timeupdate'));
                     } catch(e) {}
                 }
-            });
+            }
 
-            // Tự động kích hoạt nút Bỏ qua quảng cáo của JWPlayer, Video.js, DPlayer, Plyr
-            const skipButtons = document.querySelectorAll(`
+            // Click toàn bộ nút Bỏ qua quảng cáo
+            document.querySelectorAll(`
                 .jw-skip, .videojs-ad-skip, .ytp-ad-skip-button, .ytp-ad-skip-button-modern,
-                .dplayer-ad-skip, [class*="skip-ad"], [id*="skip-ad"], .skip-button, button[aria-label*="skip"]
-            `);
-            skipButtons.forEach(btn => {
-                try {
-                    btn.click();
-                    console.log("[AdGuard Video] Đã nhấn nút Bỏ qua quảng cáo!");
-                } catch(e) {}
-            });
+                .dplayer-ad-skip, [class*="skip"], [id*="skip"], button[aria-label*="skip"]
+            `).forEach(b => { try { b.click(); } catch(e) {} });
         };
 
-        // Lặp kiểm tra cực nhanh mỗi 100ms ngay khi vừa mở video
-        setInterval(neutraliseVideoAds, 100);
-        document.addEventListener('DOMContentLoaded', neutraliseVideoAds);
+        // Chạy liên tục mỗi 80ms
+        setInterval(killAdVideos, 80);
+        setInterval(hookHls, 200);
+        document.addEventListener('DOMContentLoaded', killAdVideos);
     })();
     """
 
@@ -159,7 +129,7 @@ class AdBlockEngine {
         """
 
         WKContentRuleListStore.default().compileContentRuleList(
-            forIdentifier: "AdGuardExtensionRuleset",
+            forIdentifier: "AdGuardNuclearRuleset",
             encodedContentRuleList: blockJSON
         ) { [weak self] ruleList, error in
             if let error = error {
@@ -180,7 +150,7 @@ class AdBlockEngine {
             userContent.add(rules)
         }
 
-        // 1. Tiêm CSS diệt sạch banner (đã hoạt động hiệu quả)
+        // 1. CSS tiêm tức thì
         let cssScript = """
         const style = document.createElement('style');
         style.type = 'text/css';
@@ -189,8 +159,8 @@ class AdBlockEngine {
         """
         userContent.addUserScript(WKUserScript(source: cssScript, injectionTime: .atDocumentStart, forMainFrameOnly: false))
 
-        // 2. Tiêm bộ diệt In-Stream Video Ads đặc trị IMA / Countdown / Ended Event
-        userContent.addUserScript(WKUserScript(source: inStreamVideoAdKiller, injectionTime: .atDocumentStart, forMainFrameOnly: false))
+        // 2. Tiêm Nuclear Video Ad Killer vào mọi frame
+        userContent.addUserScript(WKUserScript(source: nuclearVideoAdScript, injectionTime: .atDocumentStart, forMainFrameOnly: false))
 
         return config
     }
