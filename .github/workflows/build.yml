@@ -1,0 +1,56 @@
+name: Build QuickWeb IPA (TrollStore iOS 15+)
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          brew install ldid
+
+      - name: Compile QuickWeb App (SwiftUI & WebKit)
+        run: |
+          SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
+          mkdir -p Payload/QuickWeb.app
+
+          # Compile Swift sources directly into executable arm64
+          xcrun -sdk iphoneos swiftc -O \
+            -target arm64-apple-ios15.0 \
+            -sdk "$SDK_PATH" \
+            -emit-executable \
+            QuickWebApp.swift \
+            BookmarkStore.swift \
+            AdBlockEngine.swift \
+            WebBrowserView.swift \
+            YouTubeContainerView.swift \
+            HomeBookmarkView.swift \
+            -o Payload/QuickWeb.app/QuickWeb \
+            -framework UIKit \
+            -framework SwiftUI \
+            -framework WebKit \
+            -framework Foundation
+
+          # Copy Info.plist
+          cp Info.plist Payload/QuickWeb.app/Info.plist
+
+          # Sign with TrollStore entitlements (Bypass sandbox, Root/Platform App)
+          ldid -Sentitlements.plist Payload/QuickWeb.app/QuickWeb
+
+          # Package into IPA
+          zip -r9 QuickWeb_TrollStore_iOS15.ipa Payload
+          ls -lh QuickWeb_TrollStore_iOS15.ipa
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: QuickWeb-TrollStore-iOS15-IPA
+          path: QuickWeb_TrollStore_iOS15.ipa
