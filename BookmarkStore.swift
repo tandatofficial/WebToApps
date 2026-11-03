@@ -49,6 +49,11 @@ class BookmarkStore: ObservableObject {
         save()
     }
 
+    func deleteBookmark(byId id: UUID) {
+        bookmarks.removeAll { $0.id == id }
+        save()
+    }
+
     func deleteBookmark(at offsets: IndexSet) {
         bookmarks.remove(atOffsets: offsets)
         save()

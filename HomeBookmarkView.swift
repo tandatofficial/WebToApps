@@ -5,7 +5,9 @@ struct HomeBookmarkView: View {
     @State private var inputTitle: String = ""
     @State private var inputURL: String = ""
     @State private var selectedBookmark: Bookmark? = nil
-    @State private var showBrowser: Bool = false
+    @State private var isEditing: Bool = false
+    @State private var itemToDelete: Bookmark? = nil
+    @State private var showDeleteConfirm: Bool = false
 
     let columns = [
         GridItem(.adaptive(minimum: 74), spacing: 14)
@@ -29,12 +31,28 @@ struct HomeBookmarkView: View {
 
                     Spacer()
 
+                    // Edit / Done Button
+                    Button(action: {
+                        withAnimation(.spring()) {
+                            isEditing.toggle()
+                        }
+                    }) {
+                        Text(isEditing ? "Xong" : "Sửa")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(.blue)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Color.white.opacity(0.08))
+                            .cornerRadius(10)
+                    }
+
+                    // Smart Shield Badge
                     HStack(spacing: 4) {
-                        Circle()
-                            .fill(Color(red: 0.18, green: 0.82, blue: 0.35))
-                            .frame(width: 6, height: 6)
-                        Text("AdBlock Pro")
-                            .font(.system(size: 11, weight: .semibold))
+                        Image(systemName: "shield.checkerboard")
+                            .font(.system(size: 11))
+                            .foregroundColor(Color(red: 0.18, green: 0.82, blue: 0.35))
+                        Text("AdGuard")
+                            .font(.system(size: 11, weight: .bold))
                             .foregroundColor(Color(red: 0.18, green: 0.82, blue: 0.35))
                     }
                     .padding(.horizontal, 10)
@@ -48,7 +66,7 @@ struct HomeBookmarkView: View {
                 // Input Box
                 VStack(spacing: 8) {
                     HStack {
-                        TextField("Nhập URL (ví dụ: m.youtube.com)...", text: $inputURL)
+                        TextField("Nhập URL (ví dụ: phimmoi, truyện, youtube)...", text: $inputURL)
                             .font(.system(size: 14))
                             .padding(10)
                             .background(Color.white.opacity(0.08))
@@ -73,53 +91,69 @@ struct HomeBookmarkView: View {
                 .cornerRadius(16)
                 .padding(.horizontal, 16)
 
-                // Grid of icons
+                // Grid of icons with delete badge in Edit Mode & Context Menu
                 ScrollView(showsIndicators: false) {
                     LazyVGrid(columns: columns, spacing: 18) {
                         ForEach(store.bookmarks) { item in
                             VStack(spacing: 6) {
-                                ZStack(alignment: .bottomTrailing) {
-                                    if item.isSpecialApp {
-                                        // YouTube Icon
-                                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                            .fill(LinearGradient(colors: [Color(red: 0.25, green: 0, blue: 0), Color.black], startPoint: .topLeading, endPoint: .bottomTrailing))
-                                            .frame(width: 60, height: 60)
-                                            .overlay(
-                                                Image(systemName: "play.rectangle.fill")
-                                                    .foregroundColor(.red)
-                                                    .font(.system(size: 26))
-                                            )
-                                            .overlay(
-                                                RoundedRectangle(cornerRadius: 16)
-                                                    .stroke(Color.red.opacity(0.3), lineWidth: 1)
-                                            )
-                                    } else {
-                                        // Standard Web Icon
-                                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                            .fill(Color.white.opacity(0.08))
-                                            .frame(width: 60, height: 60)
-                                            .overlay(
-                                                AsyncImage(url: item.faviconURL) { phase in
-                                                    if let image = phase.image {
-                                                        image.resizable().scaledToFit().frame(width: 32, height: 32)
-                                                    } else {
-                                                        Image(systemName: "globe")
-                                                            .font(.system(size: 24))
-                                                            .foregroundColor(.gray)
+                                ZStack(alignment: .topTrailing) {
+                                    ZStack(alignment: .bottomTrailing) {
+                                        if item.isSpecialApp {
+                                            // YouTube Icon
+                                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                                .fill(LinearGradient(colors: [Color(red: 0.25, green: 0, blue: 0), Color.black], startPoint: .topLeading, endPoint: .bottomTrailing))
+                                                .frame(width: 60, height: 60)
+                                                .overlay(
+                                                    Image(systemName: "play.rectangle.fill")
+                                                        .foregroundColor(.red)
+                                                        .font(.system(size: 26))
+                                                )
+                                                .overlay(
+                                                    RoundedRectangle(cornerRadius: 16)
+                                                        .stroke(Color.red.opacity(0.3), lineWidth: 1)
+                                                )
+                                        } else {
+                                            // Standard Web Icon
+                                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                                .fill(Color.white.opacity(0.08))
+                                                .frame(width: 60, height: 60)
+                                                .overlay(
+                                                    AsyncImage(url: item.faviconURL) { phase in
+                                                        if let image = phase.image {
+                                                            image.resizable().scaledToFit().frame(width: 32, height: 32)
+                                                        } else {
+                                                            Image(systemName: "globe")
+                                                                .font(.system(size: 24))
+                                                                .foregroundColor(.gray)
+                                                        }
                                                     }
-                                                }
-                                            )
-                                            .overlay(
-                                                RoundedRectangle(cornerRadius: 16)
-                                                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                                            )
+                                                )
+                                                .overlay(
+                                                    RoundedRectangle(cornerRadius: 16)
+                                                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                                                )
+                                        }
+
+                                        // Shield Dot
+                                        Circle()
+                                            .fill(Color(red: 0.18, green: 0.82, blue: 0.35))
+                                            .frame(width: 9, height: 9)
+                                            .padding(3)
                                     }
 
-                                    // Shield Dot
-                                    Circle()
-                                        .fill(Color(red: 0.18, green: 0.82, blue: 0.35))
-                                        .frame(width: 9, height: 9)
-                                        .padding(3)
+                                    // Delete badge (hiển thị khi bấm "Sửa" hoặc rung icon)
+                                    if isEditing {
+                                        Button(action: {
+                                            itemToDelete = item
+                                            showDeleteConfirm = true
+                                        }) {
+                                            Image(systemName: "minus.circle.fill")
+                                                .font(.system(size: 20))
+                                                .foregroundColor(.red)
+                                                .background(Circle().fill(Color.white).frame(width: 14, height: 14))
+                                        }
+                                        .offset(x: 6, y: -6)
+                                    }
                                 }
 
                                 Text(item.title)
@@ -127,9 +161,21 @@ struct HomeBookmarkView: View {
                                     .foregroundColor(Color(white: 0.85))
                                     .lineLimit(1)
                             }
+                            .contentShape(Rectangle())
                             .onTapGesture {
-                                selectedBookmark = item
-                                showBrowser = true
+                                if !isEditing {
+                                    selectedBookmark = item
+                                }
+                            }
+                            // Context Menu (Nhấn giữ icon để Xóa trực tiếp)
+                            .contextMenu {
+                                Button(role: .destructive) {
+                                    withAnimation {
+                                        store.deleteBookmark(byId: item.id)
+                                    }
+                                } label: {
+                                    Label("Xóa trang này", systemImage: "trash")
+                                }
                             }
                         }
                     }
@@ -140,12 +186,27 @@ struct HomeBookmarkView: View {
                 Spacer()
             }
         }
+        // Hộp thoại xác nhận xóa
+        .alert(isPresented: $showDeleteConfirm) {
+            Alert(
+                title: Text("Xác nhận xóa"),
+                message: Text("Bạn có chắc chắn muốn xóa bookmark '\(itemToDelete?.title ?? "")' không?"),
+                primaryButton: .destructive(Text("Xóa")) {
+                    if let target = itemToDelete {
+                        withAnimation {
+                            store.deleteBookmark(byId: target.id)
+                        }
+                    }
+                },
+                secondaryButton: .cancel(Text("Hủy"))
+            )
+        }
         .fullScreenCover(item: $selectedBookmark) { item in
             if let targetURL = URL(string: item.url) {
                 if item.isSpecialApp {
                     YouTubeContainerView(initialURL: targetURL)
                 } else {
-                    // Standard In-App Browser with Adblock
+                    // Standard In-App Browser with Smart AdGuard Shield
                     VStack(spacing: 0) {
                         HStack {
                             Button("Đóng") {
@@ -160,9 +221,14 @@ struct HomeBookmarkView: View {
                                 .foregroundColor(.white)
                             Spacer()
 
-                            Image(systemName: "shield.fill")
-                                .foregroundColor(Color(red: 0.18, green: 0.82, blue: 0.35))
-                                .font(.system(size: 14))
+                            HStack(spacing: 4) {
+                                Image(systemName: "shield.fill")
+                                    .foregroundColor(Color(red: 0.18, green: 0.82, blue: 0.35))
+                                    .font(.system(size: 12))
+                                Text("AdGuard")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(Color(red: 0.18, green: 0.82, blue: 0.35))
+                            }
                         }
                         .padding()
                         .background(Color(white: 0.1))
