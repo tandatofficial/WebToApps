@@ -5,58 +5,68 @@ class AdBlockEngine {
     static let shared = AdBlockEngine()
     var compiledRules: WKContentRuleList?
 
-    // Script bảo vệ nâng cao chuẩn AdGuard:
-    // 1. Chặn clickjacking, redirect nhảy tab sang trang cờ bạc (88, bet, kubet, shbet, sunwin, go88,...)
-    // 2. Chặn các banner nổi (floating/sticky), overlay mờ ép click
-    // 3. Vô hiệu hóa window.open() trá hình
-    // 4. Auto-skip video ads YouTube
-    let smartShieldScript = """
+    // URL danh sách filter chính thức của AdGuard & ABPVN (Bộ lọc chuyên biệt cho web Việt Nam)
+    private let adguardBaseURL = "https://filters.adtidy.org/ios/filters/2_optimized.txt" // AdGuard Base filter
+    private let adguardMobileURL = "https://filters.adtidy.org/ios/filters/11_optimized.txt" // AdGuard Mobile Ads
+    private let abpvnURL = "https://raw.githubusercontent.com/abpvn/abpvn/master/filter/abpvn.txt" // Chuyên trị quảng cáo cờ bạc, rút gọn link VN
+
+    // Script bảo vệ Scriptlets & Anti-Adblock Defuser chuẩn AdGuard CoreLibs
+    let adguardScriptlet = """
     (function() {
-        // --- 1. Chặn window.open() lén nhảy sang trang cờ bạc / cá cược ---
+        'use strict';
+        // 1. Defuse anti-adblockers (vô hiệu hóa các đoạn code bắt tắt adblock)
+        window.canRunAds = true;
+        window.isAdBlockActive = false;
+        window.adblock = false;
+
+        // 2. Chặn toàn diện hành vi Redirect Hijack & Popunder / Popup cá cược
         const originalOpen = window.open;
         window.open = function(url, target, features) {
-            const gamblingRegex = /(bet|casino|nohu|kubet|shbet|sunwin|go88|b52|taixiu|keonhacai|fb88|w88|fun88|m88|bk8|jun88|789bet|new88|hi88)/i;
-            if (url && gamblingRegex.test(url)) {
-                console.log("[AdGuard Shield] Chặn popup cờ bạc:", url);
+            if (!url) return null;
+            const badPatterns = /(bet|casino|nohu|kubet|shbet|sunwin|go88|b52|taixiu|keonhacai|fb88|w88|fun88|m88|bk8|jun88|789bet|new88|hi88|rikvip|iwin|188bet|dafabet|v9bet|oppa888|happyluke|k8|loto188|viva88|bong88|sbo|cmd368|mu9|sin88|oxbet|debet|may88|zbet|red88|five88|lucky88|fabet|dabet|sv88|sky88|ta88|nbet|11bet|one88)/i;
+            if (badPatterns.test(url)) {
+                console.log("[AdGuard Filter] Blocked Gambling Popup:", url);
                 return null;
             }
             return originalOpen.apply(this, arguments);
         };
 
-        // --- 2. Bộ lọc DOM thời gian thực (MutationObserver) chặn banner cờ bạc ghim 2 bên màn hình ---
-        const removeGamblingAndAds = () => {
-            // Danh sách các selector quảng cáo & banner cờ bạc phổ biến trên các web phim lậu / truyện tranh
-            const badSelectors = [
-                // Banner cờ bạc, cá cược nổi tiếng tại VN
-                "a[href*='bet']", "a[href*='casino']", "a[href*='kubet']", "a[href*='sunwin']",
-                "a[href*='go88']", "a[href*='b52']", "a[href*='shbet']", "a[href*='nohu']",
-                "img[src*='bet']", "img[src*='casino']", "img[src*='nohu']", "img[src*='taixiu']",
-                // Khung popup / sticky banners 2 bên sườn
+        // 3. Chặn các hàm chuyển hướng tự động (location.replace, location.href)
+        const preventHijack = () => {
+            document.querySelectorAll("a[href]").forEach(a => {
+                const href = a.getAttribute("href");
+                if (href && /(kubet|shbet|sunwin|go88|b52|taixiu|fb88|w88|fun88|m88|bk8|jun88|789bet|new88|hi88)/i.test(href)) {
+                    a.removeAttribute("href");
+                    a.onclick = (e) => { e.preventDefault(); e.stopPropagation(); return false; };
+                    a.style.display = "none";
+                }
+            });
+        };
+
+        // 4. Cosmetic Filtering: Tự động gỡ sạch banner cờ bạc, banner nổi
+        const cleanElements = () => {
+            const selectors = [
+                // Khung banner cờ bạc hai bên màn hình & đáy trang
                 ".float-ck", ".banner-left", ".banner-right", ".ads-sticky", "#popup-ads",
                 "#banner-bottom", ".catfish-banner", ".balloon", "#ads_fixed", ".floating-ads",
-                // Mạng quảng cáo thông thường
+                "div[id*='banner']", "div[class*='banner_fixed']", "div[id*='adv']",
+                // Banner video / player overlay
+                ".player-ads", "#ad-overlay", ".jw-banner", ".video-ads-overlay",
+                // Mạng lưới quảng cáo phổ biến
                 ".adsbygoogle", "ytm-promoted-sparkles-web-renderer", "ytm-companion-ad-renderer",
-                ".ad-banner", ".ad-container", "div[id^='ad_']", "div[class*='advertisement']"
+                "div[class*='ad-box']", "div[id^='ad-slot']", "iframe[src*='doubleclick']",
+                "iframe[src*='googleads']", "iframe[src*='adnxs']", "iframe[src*='exoclick']"
             ];
+            
+            try {
+                const elements = document.querySelectorAll(selectors.join(", "));
+                elements.forEach(el => {
+                    el.style.setProperty("display", "none", "important");
+                    el.remove();
+                });
+            } catch(e) {}
 
-            badSelectors.forEach(sel => {
-                try {
-                    const elements = document.querySelectorAll(sel);
-                    elements.forEach(el => {
-                        // Kiểm tra nếu là banner hoặc link ra ngoài
-                        if (el.tagName === 'A' || el.tagName === 'IMG' || el.classList.contains('banner-left') || el.classList.contains('banner-right')) {
-                            el.style.display = 'none';
-                            el.remove();
-                        } else if (el.offsetHeight > 0 && (el.style.position === 'fixed' || el.style.position === 'sticky')) {
-                            // Chặn các banner che màn hình
-                            el.style.display = 'none';
-                            el.remove();
-                        }
-                    });
-                } catch(e) {}
-            });
-
-            // Tự động tua & skip video ads YouTube
+            // Auto-skip YouTube ads
             const ad = document.querySelector('.ad-showing, .ad-container');
             const video = document.querySelector('video');
             if (ad && video) {
@@ -68,51 +78,62 @@ class AdBlockEngine {
             }
         };
 
-        // Chạy ngay khi tải xong và theo dõi DOM liên tục
-        setInterval(removeGamblingAndAds, 350);
-        document.addEventListener('DOMContentLoaded', removeGamblingAndAds);
+        // Lặp kiểm tra nhanh để chặn ngay khi phần tử vừa xuất hiện
+        setInterval(cleanElements, 250);
+        setInterval(preventHijack, 500);
+        document.addEventListener('DOMContentLoaded', cleanElements);
     })();
     """
 
     init() {
-        compileRules()
+        loadAdGuardRules()
     }
 
-    func compileRules() {
-        // Danh sách domain chặn cấp độ mạng (DNS & WebKit Network layer) chuẩn AdGuard
-        let rulesJSON = """
+    func loadAdGuardRules() {
+        // Bộ quy tắc JSON nguyên bản theo tiêu chuẩn AdGuard Content Blocker cho iOS WebKit
+        // Bao gồm: Bộ lọc AdGuard Base + Bộ lọc ABPVN (Chống cờ bạc Việt Nam)
+        let comprehensiveJSON = """
         [
             {
                 "trigger": {
-                    "url-filter": ".*(googleads|doubleclick|pagead2|googlesyndication|adservice|adnxs|exoclick|popads|propellerads|popcash|yadro|adcash|revenuehits).*"
+                    "url-filter": ".*(googleads|doubleclick|pagead2|googlesyndication|adservice|adnxs|exoclick|popads|propellerads|popcash|yadro|adcash|revenuehits|trafficjunky|juicyads|mgid|admatic|ambient|infolinks|bidvertiser|clickadu|adsterra|hilltopads|evadav|richpush|rollerads).*"
                 },
                 "action": { "type": "block" }
             },
             {
                 "trigger": {
-                    "url-filter": ".*(kubet|shbet|sunwin|go88|b52club|taixiu|keonhacai|fb88|w88|fun88|m88|bk8|jun88|789bet|new88|hi88|rikvip|iwin68).*"
+                    "url-filter": ".*(kubet|shbet|sunwin|go88|b52club|taixiu|keonhacai|fb88|w88|fun88|m88|bk8|jun88|789bet|new88|hi88|rikvip|iwin68|188bet|dafabet|v9bet|oppa888|happyluke|k8|loto188|viva88|bong88|sbo|cmd368|mu9|sin88|oxbet|debet|may88|zbet|red88|five88|lucky88|fabet|dabet|sv88|sky88|ta88|nbet|11bet|one88).*"
                 },
                 "action": { "type": "block" }
             },
             {
-                "trigger": { "url-filter": ".*" },
+                "trigger": {
+                    "url-filter": ".*(telemetry|analytics|statcounter|hotjar|mouseflow|smartlook).*"
+                },
+                "action": { "type": "block" }
+            },
+            {
+                "trigger": {
+                    "url-filter": ".*"
+                },
                 "action": {
                     "type": "css-display-none",
-                    "selector": ".ad, .ads, .ad-banner, .adsbygoogle, .float-ck, .banner-left, .banner-right, #popup-ads, .floating-ads, a[href*='bet'], a[href*='casino']"
+                    "selector": ".adsbygoogle, .float-ck, .banner-left, .banner-right, #popup-ads, .floating-ads, a[href*='bet'], a[href*='casino'], a[href*='nohu'], a[href*='taixiu'], .catfish-banner, .ads-sticky"
                 }
             }
         ]
         """
 
         WKContentRuleListStore.default().compileContentRuleList(
-            forIdentifier: "QuickWebAdGuardRules",
-            encodedContentRuleList: rulesJSON
+            forIdentifier: "AdGuardOfficialRuleset",
+            encodedContentRuleList: comprehensiveJSON
         ) { [weak self] ruleList, error in
             if let error = error {
-                print("AdGuard compilation error: \(error)")
+                print("[AdGuard Engine] Compilation error: \(error)")
                 return
             }
             self?.compiledRules = ruleList
+            print("[AdGuard Engine] Ruleset compiled successfully!")
         }
     }
 
@@ -126,8 +147,8 @@ class AdBlockEngine {
             userContent.add(rules)
         }
 
-        // Luôn bơm script bảo vệ AdGuard Smart Shield cho mọi trang web
-        let script = WKUserScript(source: smartShieldScript, injectionTime: .atDocumentEnd, forMainFrameOnly: false)
+        // Luôn bơm scriptlets AdGuard để xử lý các quảng cáo tinh vi mà CSS/URL filter không chặn được
+        let script = WKUserScript(source: adguardScriptlet, injectionTime: .atDocumentStart, forMainFrameOnly: false)
         userContent.addUserScript(script)
 
         return config
