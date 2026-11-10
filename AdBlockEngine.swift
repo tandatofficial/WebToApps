@@ -5,9 +5,13 @@ class AdBlockEngine {
     static let shared = AdBlockEngine()
     var compiledRules: WKContentRuleList?
 
-    // 1. CSS triệt tiêu toàn bộ banner & popup nổi đặc thù của web NSFW
+    // 1. CSS diệt banner và ẩn triệt để mọi popup Anti-Adblock
     let aggressiveAdHideCSS = """
-    /* Banner mạng ExoClick, TrafficJunky, JuicyAds, cờ bạc */
+    /* Chặn triệt để lớp phủ Anti-Adblock của Nguồn C (StreamGuard / StreamC) */
+    .stream-guard, .stream-guard-card, .stream-guard-notice, .stream-guard-diagnostics,
+    #nc-player-apple-fallback, [id*='guard-modal'], [class*='guard-modal'],
+    
+    /* Banner cờ bạc, floating, sticky, popup */
     .float-ck, .banner-left, .banner-right, .ads-sticky, #popup-ads,
     #banner-bottom, .catfish-banner, .balloon, #ads_fixed, .floating-ads,
     div[id*='banner'], div[class*='banner'], div[id*='adv'], div[class*='adv'],
@@ -17,9 +21,8 @@ class AdBlockEngine {
     a[href*='bet'], a[href*='casino'], a[href*='nohu'], a[href*='taixiu'],
     a[href*='kubet'], a[href*='shbet'], a[href*='sunwin'], a[href*='go88'], a[href*='b52'],
     div[id*='spot_id'], div[class*='spot_id'], [data-ad], [data-zone],
-    .ad-container, .ad-player, .ad-placeholder, .exo-native-widget,
+    .ad-container, .ad-player, .ad-placeholder,
     iframe[src*='exoclick'], iframe[src*='trafficjunky'], iframe[src*='juicyads'],
-    iframe[src*='trafficfactory'], iframe[src*='ero-advertising'],
     div[style*='z-index: 999999'], div[style*='z-index: 2147483647'] {
         display: none !important;
         visibility: hidden !important;
@@ -30,98 +33,118 @@ class AdBlockEngine {
     }
     """
 
-    // 2. ADULT & NSFW IN-STREAM VIDEO AD DESTROYER
-    // Xử lý triệt để ExoClick, TrafficJunky, JuicyAds, TrafficFactory & VAST Pre-roll
-    let nsfwVideoAdKiller = """
+    // 2. DEFUSER & ANTI-ADBLOCK BYPASS CHO NGUỒN C, STREAMC & CÁC TRANG PHIM VIỆT NAM
+    let antiAdblockDefuserScript = """
     (function() {
         'use strict';
 
-        // --- A. BỘ LỌC CÁC MẠNG QUẢNG CÁO VIDEO NSFW ---
-        const nsfwAdKeywords = [
-            'exoclick', 'trafficjunky', 'juicyads', 'trafficfactory',
-            'tsyndicate', 'delivery.trafficjunky', 'adserver.juicyads',
-            'preroll', 'vast', 'vpaid', 'spot_id', 'zone_id', 'campaign',
-            'ad_id', 'popads', 'adsterra', 'clickadu', 'hilltopads',
-            'stripchat', 'cam4', 'bongacams', 'livejasmin', 'camsoda',
-            'bet88', 'kubet', 'sunwin', 'b52', 'casino'
-        ];
+        // =========================================================================
+        // A. TRIỆT TIÊU STREAMGUARD (Nguồn C / StreamC / Phim Mới / OPhim)
+        // Hệ thống phát hiện adblock trong embed3.streamc.xyz / phim.nguonc.com
+        // =========================================================================
+        try {
+            window.streamGuard = {
+                version: "guard-7",
+                status: function() {
+                    return {
+                        version: "guard-7",
+                        devtoolsBuild: "iframe-local-5",
+                        devtoolsLocal: "Tắt",
+                        devtoolsRedirect: false,
+                        redirectStarted: false,
+                        blockShortcuts: false,
+                        antiAdblock: false,
+                        detectDevtools: false,
+                        devtoolsSessionLocked: false,
+                        devtoolsRetainedLock: false,
+                        action: "none",
+                        css: "Phần tử mẫu hiển thị",
+                        network: "Script mẫu hiển thị",
+                        devtools: "Tắt trong admin",
+                        lastKey: "Chưa nhận phím kiểm tra",
+                        frame: "Embed độc lập",
+                        parentVersion: "guard-5",
+                        parentAds: "Tắt trong admin",
+                        adResources: "Tài nguyên quảng cáo đã tải/phát được",
+                        uncertainNetwork: false,
+                        blocked: false
+                    };
+                },
+                ready: Promise.resolve(),
+                isBlocked: function() { return false; },
+                reportAdResource: function() {},
+                waitForAccess: function() { return Promise.resolve(); },
+                registerPlayer: function(player) {
+                    console.log("[QuickWeb] Defused StreamGuard: registerPlayer bypassed");
+                }
+            };
+            window.streamAdsLoaded = true;
+        } catch(e) {}
 
-        const isNsfwAdUrl = (url) => {
-            if (!url || typeof url !== 'string') return false;
-            const lower = url.toLowerCase();
-            return nsfwAdKeywords.some(keyword => lower.includes(keyword));
+        // =========================================================================
+        // B. GIẢ LẬP BIẾN ADGUARD VÀ DEFUSE CÁC HÀM PHÁT HIỆN AD-BLOCK TOÀN DIỆN
+        // =========================================================================
+        window.canRunAds = true;
+        window.isAdBlockActive = false;
+        window.adblock = false;
+
+        // Vô hiệu hóa Google IMA SDK
+        window.google = window.google || {};
+        window.google.ima = {
+            AdsLoader: function() {
+                this.requestAds = function() {};
+                this.contentComplete = function() {};
+                this.addEventListener = function() {};
+            },
+            AdsManagerLoadedEvent: { Type: { ADS_MANAGER_LOADED: 'adsManagerLoaded' } },
+            AdErrorEvent: { Type: { AD_ERROR: 'adError' } },
+            ViewMode: {},
+            AdDisplayContainer: function() {
+                this.initialize = function() {};
+                this.destroy = function() {};
+            },
+            AdsRequest: function() {},
+            settings: { setAutoPlayAdBreaks: function() {}, setVpaidMode: function() {} }
         };
 
-        // --- B. CHẶN FETCH & XHR CỦA TRÌNH PHÁT VIDEO ĐẾN SERVER QUẢNG CÁO ---
-        const originalFetch = window.fetch;
-        window.fetch = function() {
-            const url = arguments[0];
-            if (typeof url === 'string' && isNsfwAdUrl(url)) {
-                console.log("[NSFW Shield] Đã chặn Request quảng cáo video:", url);
-                return Promise.reject(new Error("Blocked by NSFW Shield"));
-            }
-            return originalFetch.apply(this, arguments);
-        };
+        // =========================================================================
+        // C. TỰ ĐỘNG GỠ BỎ MODAL THÔNG BÁO VÀ TIẾP TỤC PHÁT VIDEO NẾU BỊ TẠM DỪNG
+        // =========================================================================
+        const unpauseVideoAndRemoveModals = () => {
+            // Xóa phần tử StreamGuard thông báo
+            const guardModals = document.querySelectorAll('.stream-guard, .stream-guard-card, .stream-guard-notice');
+            guardModals.forEach(el => el.remove());
 
-        const originalXHROpen = XMLHttpRequest.prototype.open;
-        XMLHttpRequest.prototype.open = function(method, url) {
-            if (typeof url === 'string' && isNsfwAdUrl(url)) {
-                console.log("[NSFW Shield] Đã chặn XHR quảng cáo video:", url);
-                return;
-            }
-            return originalXHROpen.apply(this, arguments);
-        };
-
-        // --- C. TRIỆT TIÊU BIẾN CẤU HÌNH PREROLL TRONG PLAYER OBJECT ---
-        // Các trình phát NSFW lưu link quảng cáo trong flashvars, player.options hoặc video_preroll
-        const cleanPlayerConfig = () => {
-            const killProps = ['preroll', 'video_preroll', 'ad_url', 'vast', 'vpaid', 'vast_url', 'adTag'];
-            killProps.forEach(prop => {
-                try {
-                    if (window.flashvars && window.flashvars[prop]) window.flashvars[prop] = '';
-                    if (window.playerConfig && window.playerConfig[prop]) window.playerConfig[prop] = '';
-                    if (window.video_preroll) window.video_preroll = null;
-                } catch(e) {}
-            });
-        };
-
-        // --- D. KHỐNG CHẾ THẺ <VIDEO> VÀ CƯỠNG CHẾ BỎ QUA ĐOẠN QUẢNG CÁO ---
-        const autoSkipInStream = () => {
-            cleanPlayerConfig();
-
+            // Tự động nhấn nút tiếp tục / unpause nếu video bị chặn
             const videos = document.querySelectorAll('video');
             videos.forEach(v => {
+                if (v.paused && v.duration > 60 && !v.ended) {
+                    // Nếu là video phim dài và bị pause do guard
+                    const playPromise = v.play();
+                    if (playPromise !== undefined) {
+                        playPromise.catch(() => {});
+                    }
+                }
+
+                // Nếu là video quảng cáo ngắn (<= 35s), tua sạch
                 const src = (v.currentSrc || v.src || '').toLowerCase();
-                const duration = v.duration;
-
-                // 1. Nếu src chứa domain quảng cáo hoặc là clip ngắn <= 35s
-                const isShort = duration > 0 && duration <= 35;
-                const isAdSource = isNsfwAdUrl(src);
-
-                if (isShort || isAdSource || v.closest('[class*="ad"]') || v.closest('[id*="ad"]')) {
-                    console.log("[NSFW Shield] Đang tua sạch Video QC...");
+                const dur = v.duration;
+                if ((dur > 0 && dur <= 35) || src.includes('preroll') || src.includes('vast') || src.includes('bet')) {
                     v.muted = true;
                     v.playbackRate = 16.0;
-                    v.currentTime = duration || 9999;
-                    try {
-                        v.dispatchEvent(new Event('ended'));
-                        v.dispatchEvent(new Event('timeupdate'));
-                    } catch(e) {}
+                    v.currentTime = dur || 9999;
+                    try { v.dispatchEvent(new Event('ended')); } catch(e) {}
                 }
             });
 
-            // Tự động click mọi nút Skip / Close / Bỏ qua quảng cáo của player
-            const skipBtns = document.querySelectorAll(`
-                .jw-skip, .videojs-ad-skip, .ad-skip, [class*="skip"], [id*="skip"],
-                .close-ad, .skip-ad, button[aria-label*="skip"], .mg-skip-button,
-                .mg-player-ad-skip, .vjs-skip-button
-            `);
-            skipBtns.forEach(btn => { try { btn.click(); } catch(e) {} });
+            // Tự động click nút 'Kiểm tra lại' hoặc các nút skip nếu có
+            document.querySelectorAll('.jw-skip, .videojs-ad-skip, .ytp-ad-skip-button, button[aria-label*="skip"]').forEach(b => {
+                try { b.click(); } catch(e) {}
+            });
         };
 
-        // Quét liên tục mỗi 80ms
-        setInterval(autoSkipInStream, 80);
-        document.addEventListener('DOMContentLoaded', autoSkipInStream);
+        setInterval(unpauseVideoAndRemoveModals, 100);
+        document.addEventListener('DOMContentLoaded', unpauseVideoAndRemoveModals);
     })();
     """
 
@@ -130,12 +153,17 @@ class AdBlockEngine {
     }
 
     func compileRules() {
-        // Danh sách chặn toàn bộ mạng quảng cáo NSFW hàng đầu thế giới ở cấp độ mạng WebKit
         let blockJSON = """
         [
             {
                 "trigger": {
-                    "url-filter": ".*(exoclick|trafficjunky|juicyads|trafficfactory|tsyndicate|adsterra|clickadu|hilltopads|propellerads|popads|popcash|ero-advertising|stripchat|bongacams|livejasmin|camsoda|chaturbate|vast|vpaid|preroll|midroll|bet88|kubet|sunwin).*"
+                    "url-filter": ".*(vast|vpaid|ima3|doubleclick|googleads|googlesyndication|pagead|exoclick|popads|propellerads|popcash|adnxs|trafficjunky|adsterra|hilltopads|clickadu|juicyads|mgid|admatic|yadro).*"
+                },
+                "action": { "type": "block" }
+            },
+            {
+                "trigger": {
+                    "url-filter": ".*(kubet|shbet|sunwin|go88|b52club|taixiu|keonhacai|fb88|w88|fun88|m88|bk8|jun88|789bet|new88|hi88|rikvip|iwin68|188bet|dafabet|v9bet|oppa888|happyluke).*"
                 },
                 "action": { "type": "block" }
             },
@@ -145,18 +173,18 @@ class AdBlockEngine {
                 },
                 "action": {
                     "type": "css-display-none",
-                    "selector": ".float-ck, .banner-left, .banner-right, #popup-ads, .floating-ads, a[href*='bet'], a[href*='casino'], .catfish-banner, .ads-sticky, .jw-ads, .jw-ad, .player-ads, #ad-overlay, .ad-container, [data-ad]"
+                    "selector": ".stream-guard, .stream-guard-card, .float-ck, .banner-left, .banner-right, #popup-ads, .floating-ads, a[href*='bet'], a[href*='casino'], .catfish-banner, .ads-sticky, .jw-ads, .jw-ad, .player-ads, #ad-overlay, .ad-container, [data-ad]"
                 }
             }
         ]
         """
 
         WKContentRuleListStore.default().compileContentRuleList(
-            forIdentifier: "AdGuardNSFWRuleset",
+            forIdentifier: "AdGuardDefuserRuleset",
             encodedContentRuleList: blockJSON
         ) { [weak self] ruleList, error in
             if let error = error {
-                print("[NSFW Shield] Error: \(error)")
+                print("[AdBlockEngine] Error: \(error)")
                 return
             }
             self?.compiledRules = ruleList
@@ -173,7 +201,7 @@ class AdBlockEngine {
             userContent.add(rules)
         }
 
-        // 1. CSS tiêm tức thì
+        // 1. Tiêm CSS diệt sạch banner và lớp phủ StreamGuard
         let cssScript = """
         const style = document.createElement('style');
         style.type = 'text/css';
@@ -182,8 +210,14 @@ class AdBlockEngine {
         """
         userContent.addUserScript(WKUserScript(source: cssScript, injectionTime: .atDocumentStart, forMainFrameOnly: false))
 
-        // 2. Tiêm bộ diệt In-Stream Video Ads đặc trị web NSFW vào MỌI FRAME
-        userContent.addUserScript(WKUserScript(source: nsfwVideoAdKiller, injectionTime: .atDocumentStart, forMainFrameOnly: false))
+        // 2. Tiêm Anti-Adblock Defuser Script chuyên trị Nguồn C / StreamGuard vào TẤT CẢ CÁC FRAME
+        userContent.addUserScript(WKUserScript(source: antiAdblockDefuserScript, injectionTime: .atDocumentStart, forMainFrameOnly: false))
+
+        // 3. UserScripts từ ExtensionStore
+        for script in ExtensionStore.shared.userScripts where script.isEnabled {
+            let userScript = WKUserScript(source: script.code, injectionTime: .atDocumentStart, forMainFrameOnly: false)
+            userContent.addUserScript(userScript)
+        }
 
         return config
     }
