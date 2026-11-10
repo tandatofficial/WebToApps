@@ -34,6 +34,7 @@ jobs:
             ExtensionSettingsView.swift \
             AdBlockEngine.swift \
             WebBrowserView.swift \
+            InAppBrowserContainerView.swift \
             YouTubeContainerView.swift \
             HomeBookmarkView.swift \
             -o Payload/QuickWeb.app/QuickWeb \

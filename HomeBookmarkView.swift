@@ -203,7 +203,7 @@ struct HomeBookmarkView: View {
         .sheet(item: $editingShieldBookmark) { item in
             SiteShieldSettingsSheet(
                 settings: Binding(
-                    get: { item.shieldSettings },
+                    get: { store.bookmarks.first(where: { $0.id == item.id })?.shieldSettings ?? item.shieldSettings },
                     set: { newSet in store.updateSettings(for: item.id, newSettings: newSet) }
                 ),
                 domain: item.domain,
@@ -229,38 +229,20 @@ struct HomeBookmarkView: View {
                 if item.isSpecialApp {
                     YouTubeContainerView(initialURL: targetURL)
                 } else {
-                    VStack(spacing: 0) {
-                        HStack {
-                            Button("Đóng") {
-                                selectedBookmark = nil
+                    InAppBrowserContainerView(
+                        store: store,
+                        bookmark: Binding(
+                            get: {
+                                store.bookmarks.first(where: { $0.id == item.id }) ?? item
+                            },
+                            set: { updated in
+                                store.updateSettings(for: item.id, newSettings: updated.shieldSettings)
                             }
-                            .foregroundColor(.blue)
-                            .font(.system(size: 15, weight: .medium))
-
-                            Spacer()
-                            Text(item.domain)
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(.white)
-                            Spacer()
-
-                            // Nút Khiên bật tắt tùy biến nhanh cho trang này
-                            Button(action: {
-                                editingShieldBookmark = item
-                            }) {
-                                HStack(spacing: 3) {
-                                    Image(systemName: item.shieldSettings.adBlockEnabled ? "shield.fill" : "shield.slash")
-                                    Text(item.shieldSettings.adBlockEnabled ? "Bật khiên" : "Tắt khiên")
-                                }
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(item.shieldSettings.adBlockEnabled ? Color(red: 0.18, green: 0.82, blue: 0.35) : Color.gray)
-                            }
+                        ),
+                        onDismiss: {
+                            selectedBookmark = nil
                         }
-                        .padding()
-                        .background(Color(white: 0.1))
-
-                        WebBrowserView(url: targetURL, isYouTube: false, settings: item.shieldSettings)
-                    }
-                    .background(Color.black.ignoresSafeArea())
+                    )
                 }
             }
         }
