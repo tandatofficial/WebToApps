@@ -29,6 +29,7 @@ jobs:
             -emit-executable \
             QuickWebApp.swift \
             BookmarkStore.swift \
+            SiteShieldSettingsSheet.swift \
             ExtensionStore.swift \
             ExtensionSettingsView.swift \
             AdBlockEngine.swift \

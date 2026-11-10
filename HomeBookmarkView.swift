@@ -9,6 +9,7 @@ struct HomeBookmarkView: View {
     @State private var itemToDelete: Bookmark? = nil
     @State private var showDeleteConfirm: Bool = false
     @State private var showExtensionSettings: Bool = false
+    @State private var editingShieldBookmark: Bookmark? = nil
 
     let columns = [
         GridItem(.adaptive(minimum: 74), spacing: 14)
@@ -32,7 +33,7 @@ struct HomeBookmarkView: View {
 
                     Spacer()
 
-                    // Nút cài đặt tiện ích AdGuard Extension (như trên PC)
+                    // Nút cài đặt tiện ích AdGuard Extension
                     Button(action: {
                         showExtensionSettings = true
                     }) {
@@ -40,7 +41,7 @@ struct HomeBookmarkView: View {
                             Image(systemName: "puzzlepiece.extension.fill")
                                 .font(.system(size: 12))
                                 .foregroundColor(Color(red: 0.18, green: 0.82, blue: 0.35))
-                            Text("AdGuard")
+                            Text("Bộ lọc")
                                 .font(.system(size: 11, weight: .bold))
                                 .foregroundColor(Color(red: 0.18, green: 0.82, blue: 0.35))
                         }
@@ -141,7 +142,7 @@ struct HomeBookmarkView: View {
 
                                         // Shield Dot
                                         Circle()
-                                            .fill(Color(red: 0.18, green: 0.82, blue: 0.35))
+                                            .fill(item.shieldSettings.adBlockEnabled ? Color(red: 0.18, green: 0.82, blue: 0.35) : Color.gray)
                                             .frame(width: 9, height: 9)
                                             .padding(3)
                                     }
@@ -173,6 +174,12 @@ struct HomeBookmarkView: View {
                                 }
                             }
                             .contextMenu {
+                                Button {
+                                    editingShieldBookmark = item
+                                } label: {
+                                    Label("Cài đặt bộ lọc trang này", systemImage: "shield.lefthalf.filled")
+                                }
+
                                 Button(role: .destructive) {
                                     withAnimation {
                                         store.deleteBookmark(byId: item.id)
@@ -192,6 +199,16 @@ struct HomeBookmarkView: View {
         }
         .sheet(isPresented: $showExtensionSettings) {
             ExtensionSettingsView()
+        }
+        .sheet(item: $editingShieldBookmark) { item in
+            SiteShieldSettingsSheet(
+                settings: Binding(
+                    get: { item.shieldSettings },
+                    set: { newSet in store.updateSettings(for: item.id, newSettings: newSet) }
+                ),
+                domain: item.domain,
+                onSave: {}
+            )
         }
         .alert(isPresented: $showDeleteConfirm) {
             Alert(
@@ -226,19 +243,22 @@ struct HomeBookmarkView: View {
                                 .foregroundColor(.white)
                             Spacer()
 
-                            Button(action: { showExtensionSettings = true }) {
+                            // Nút Khiên bật tắt tùy biến nhanh cho trang này
+                            Button(action: {
+                                editingShieldBookmark = item
+                            }) {
                                 HStack(spacing: 3) {
-                                    Image(systemName: "puzzlepiece.extension.fill")
-                                    Text("AdGuard")
+                                    Image(systemName: item.shieldSettings.adBlockEnabled ? "shield.fill" : "shield.slash")
+                                    Text(item.shieldSettings.adBlockEnabled ? "Bật khiên" : "Tắt khiên")
                                 }
                                 .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(Color(red: 0.18, green: 0.82, blue: 0.35))
+                                .foregroundColor(item.shieldSettings.adBlockEnabled ? Color(red: 0.18, green: 0.82, blue: 0.35) : Color.gray)
                             }
                         }
                         .padding()
                         .background(Color(white: 0.1))
 
-                        WebBrowserView(url: targetURL, isYouTube: false)
+                        WebBrowserView(url: targetURL, isYouTube: false, settings: item.shieldSettings)
                     }
                     .background(Color.black.ignoresSafeArea())
                 }

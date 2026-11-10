@@ -5,13 +5,8 @@ class AdBlockEngine {
     static let shared = AdBlockEngine()
     var compiledRules: WKContentRuleList?
 
-    // 1. CSS diệt banner và ẩn triệt để mọi popup Anti-Adblock
     let aggressiveAdHideCSS = """
-    /* Chặn triệt để lớp phủ Anti-Adblock của Nguồn C (StreamGuard / StreamC) */
-    .stream-guard, .stream-guard-card, .stream-guard-notice, .stream-guard-diagnostics,
-    #nc-player-apple-fallback, [id*='guard-modal'], [class*='guard-modal'],
-    
-    /* Banner cờ bạc, floating, sticky, popup */
+    .stream-guard, .stream-guard-card, .stream-guard-notice,
     .float-ck, .banner-left, .banner-right, .ads-sticky, #popup-ads,
     #banner-bottom, .catfish-banner, .balloon, #ads_fixed, .floating-ads,
     div[id*='banner'], div[class*='banner'], div[id*='adv'], div[class*='adv'],
@@ -31,121 +26,6 @@ class AdBlockEngine {
         height: 0 !important;
         width: 0 !important;
     }
-    """
-
-    // 2. DEFUSER & ANTI-ADBLOCK BYPASS CHO NGUỒN C, STREAMC & CÁC TRANG PHIM VIỆT NAM
-    let antiAdblockDefuserScript = """
-    (function() {
-        'use strict';
-
-        // =========================================================================
-        // A. TRIỆT TIÊU STREAMGUARD (Nguồn C / StreamC / Phim Mới / OPhim)
-        // Hệ thống phát hiện adblock trong embed3.streamc.xyz / phim.nguonc.com
-        // =========================================================================
-        try {
-            window.streamGuard = {
-                version: "guard-7",
-                status: function() {
-                    return {
-                        version: "guard-7",
-                        devtoolsBuild: "iframe-local-5",
-                        devtoolsLocal: "Tắt",
-                        devtoolsRedirect: false,
-                        redirectStarted: false,
-                        blockShortcuts: false,
-                        antiAdblock: false,
-                        detectDevtools: false,
-                        devtoolsSessionLocked: false,
-                        devtoolsRetainedLock: false,
-                        action: "none",
-                        css: "Phần tử mẫu hiển thị",
-                        network: "Script mẫu hiển thị",
-                        devtools: "Tắt trong admin",
-                        lastKey: "Chưa nhận phím kiểm tra",
-                        frame: "Embed độc lập",
-                        parentVersion: "guard-5",
-                        parentAds: "Tắt trong admin",
-                        adResources: "Tài nguyên quảng cáo đã tải/phát được",
-                        uncertainNetwork: false,
-                        blocked: false
-                    };
-                },
-                ready: Promise.resolve(),
-                isBlocked: function() { return false; },
-                reportAdResource: function() {},
-                waitForAccess: function() { return Promise.resolve(); },
-                registerPlayer: function(player) {
-                    console.log("[QuickWeb] Defused StreamGuard: registerPlayer bypassed");
-                }
-            };
-            window.streamAdsLoaded = true;
-        } catch(e) {}
-
-        // =========================================================================
-        // B. GIẢ LẬP BIẾN ADGUARD VÀ DEFUSE CÁC HÀM PHÁT HIỆN AD-BLOCK TOÀN DIỆN
-        // =========================================================================
-        window.canRunAds = true;
-        window.isAdBlockActive = false;
-        window.adblock = false;
-
-        // Vô hiệu hóa Google IMA SDK
-        window.google = window.google || {};
-        window.google.ima = {
-            AdsLoader: function() {
-                this.requestAds = function() {};
-                this.contentComplete = function() {};
-                this.addEventListener = function() {};
-            },
-            AdsManagerLoadedEvent: { Type: { ADS_MANAGER_LOADED: 'adsManagerLoaded' } },
-            AdErrorEvent: { Type: { AD_ERROR: 'adError' } },
-            ViewMode: {},
-            AdDisplayContainer: function() {
-                this.initialize = function() {};
-                this.destroy = function() {};
-            },
-            AdsRequest: function() {},
-            settings: { setAutoPlayAdBreaks: function() {}, setVpaidMode: function() {} }
-        };
-
-        // =========================================================================
-        // C. TỰ ĐỘNG GỠ BỎ MODAL THÔNG BÁO VÀ TIẾP TỤC PHÁT VIDEO NẾU BỊ TẠM DỪNG
-        // =========================================================================
-        const unpauseVideoAndRemoveModals = () => {
-            // Xóa phần tử StreamGuard thông báo
-            const guardModals = document.querySelectorAll('.stream-guard, .stream-guard-card, .stream-guard-notice');
-            guardModals.forEach(el => el.remove());
-
-            // Tự động nhấn nút tiếp tục / unpause nếu video bị chặn
-            const videos = document.querySelectorAll('video');
-            videos.forEach(v => {
-                if (v.paused && v.duration > 60 && !v.ended) {
-                    // Nếu là video phim dài và bị pause do guard
-                    const playPromise = v.play();
-                    if (playPromise !== undefined) {
-                        playPromise.catch(() => {});
-                    }
-                }
-
-                // Nếu là video quảng cáo ngắn (<= 35s), tua sạch
-                const src = (v.currentSrc || v.src || '').toLowerCase();
-                const dur = v.duration;
-                if ((dur > 0 && dur <= 35) || src.includes('preroll') || src.includes('vast') || src.includes('bet')) {
-                    v.muted = true;
-                    v.playbackRate = 16.0;
-                    v.currentTime = dur || 9999;
-                    try { v.dispatchEvent(new Event('ended')); } catch(e) {}
-                }
-            });
-
-            // Tự động click nút 'Kiểm tra lại' hoặc các nút skip nếu có
-            document.querySelectorAll('.jw-skip, .videojs-ad-skip, .ytp-ad-skip-button, button[aria-label*="skip"]').forEach(b => {
-                try { b.click(); } catch(e) {}
-            });
-        };
-
-        setInterval(unpauseVideoAndRemoveModals, 100);
-        document.addEventListener('DOMContentLoaded', unpauseVideoAndRemoveModals);
-    })();
     """
 
     init() {
@@ -168,9 +48,7 @@ class AdBlockEngine {
                 "action": { "type": "block" }
             },
             {
-                "trigger": {
-                    "url-filter": ".*"
-                },
+                "trigger": { "url-filter": ".*" },
                 "action": {
                     "type": "css-display-none",
                     "selector": ".stream-guard, .stream-guard-card, .float-ck, .banner-left, .banner-right, #popup-ads, .floating-ads, a[href*='bet'], a[href*='casino'], .catfish-banner, .ads-sticky, .jw-ads, .jw-ad, .player-ads, #ad-overlay, .ad-container, [data-ad]"
@@ -180,44 +58,98 @@ class AdBlockEngine {
         """
 
         WKContentRuleListStore.default().compileContentRuleList(
-            forIdentifier: "AdGuardDefuserRuleset",
+            forIdentifier: "AdGuardConfigurableRuleset",
             encodedContentRuleList: blockJSON
         ) { [weak self] ruleList, error in
             if let error = error {
-                print("[AdBlockEngine] Error: \(error)")
+                print("[AdBlockEngine] Compile Error: \(error)")
                 return
             }
             self?.compiledRules = ruleList
         }
     }
 
-    func makeConfiguration(isYouTube: Bool = false) -> WKWebViewConfiguration {
+    func makeConfiguration(settings: SiteShieldSettings = SiteShieldSettings(), isYouTube: Bool = false) -> WKWebViewConfiguration {
         let config = WKWebViewConfiguration()
         config.allowsInlineMediaPlayback = true
         config.mediaTypesRequiringUserActionForPlayback = []
 
         let userContent = config.userContentController
-        if let rules = compiledRules {
+
+        // 1. Chỉ thêm quy tắc mạng chặn quảng cáo khi được BẬT
+        if settings.adBlockEnabled, let rules = compiledRules {
             userContent.add(rules)
         }
 
-        // 1. Tiêm CSS diệt sạch banner và lớp phủ StreamGuard
-        let cssScript = """
-        const style = document.createElement('style');
-        style.type = 'text/css';
-        style.innerHTML = `\(aggressiveAdHideCSS)`;
-        document.head ? document.head.appendChild(style) : document.documentElement.appendChild(style);
-        """
-        userContent.addUserScript(WKUserScript(source: cssScript, injectionTime: .atDocumentStart, forMainFrameOnly: false))
-
-        // 2. Tiêm Anti-Adblock Defuser Script chuyên trị Nguồn C / StreamGuard vào TẤT CẢ CÁC FRAME
-        userContent.addUserScript(WKUserScript(source: antiAdblockDefuserScript, injectionTime: .atDocumentStart, forMainFrameOnly: false))
-
-        // 3. UserScripts từ ExtensionStore
-        for script in ExtensionStore.shared.userScripts where script.isEnabled {
-            let userScript = WKUserScript(source: script.code, injectionTime: .atDocumentStart, forMainFrameOnly: false)
-            userContent.addUserScript(userScript)
+        // 2. Chỉ tiêm CSS ẩn banner khi được BẬT
+        if settings.adBlockEnabled {
+            let cssScript = """
+            const style = document.createElement('style');
+            style.type = 'text/css';
+            style.innerHTML = `\(aggressiveAdHideCSS)`;
+            document.head ? document.head.appendChild(style) : document.documentElement.appendChild(style);
+            """
+            userContent.addUserScript(WKUserScript(source: cssScript, injectionTime: .atDocumentStart, forMainFrameOnly: false))
         }
+
+        // 3. Xây dựng Script tùy biến động theo cài đặt của từng trang web
+        let customScript = """
+        (function() {
+            'use strict';
+
+            const blockPopups = \(settings.blockPopups);
+            const autoSkipVideoAds = \(settings.autoSkipVideoAds);
+            const antiAdblockDefuser = \(settings.antiAdblockDefuser);
+
+            // A. Chặn popup nhảy tab
+            if (blockPopups) {
+                window.open = function() { return null; };
+                window.streamAdsLoaded = true;
+            }
+
+            // B. Anti-Adblock Defuser (Nguồn C / StreamGuard)
+            if (antiAdblockDefuser) {
+                try {
+                    window.streamGuard = {
+                        version: "guard-7",
+                        status: () => ({ blocked: false, antiAdblock: false }),
+                        ready: Promise.resolve(),
+                        isBlocked: () => false,
+                        reportAdResource: () => {},
+                        waitForAccess: () => Promise.resolve(),
+                        registerPlayer: () => {}
+                    };
+                    window.canRunAds = true;
+                    window.isAdBlockActive = false;
+                } catch(e) {}
+            }
+
+            // C. Chỉ tự động tua video quảng cáo khi người dùng chủ động BẬT tùy chọn này
+            if (autoSkipVideoAds) {
+                const skipAdsSafe = () => {
+                    const videos = document.querySelectorAll('video');
+                    videos.forEach(v => {
+                        const dur = v.duration;
+                        const src = (v.currentSrc || v.src || '').toLowerCase();
+                        // Chỉ tua khi là video quảng cáo thực sự (chứa 'vast', 'preroll' hoặc nằm trong khung jw-ads)
+                        const isStrictAd = src.includes('vast') || src.includes('preroll') || v.closest('.jw-ads') || v.closest('.videojs-ads');
+                        if (isStrictAd && dur > 0 && dur <= 35) {
+                            v.muted = true;
+                            v.currentTime = dur || 9999;
+                        }
+                    });
+
+                    // Click nút Bỏ qua quảng cáo tự nhiên của player
+                    document.querySelectorAll('.jw-skip, .videojs-ad-skip, .ytp-ad-skip-button, button[aria-label*="skip"]').forEach(b => {
+                        try { b.click(); } catch(e) {}
+                    });
+                };
+                setInterval(skipAdsSafe, 400);
+            }
+        })();
+        """
+
+        userContent.addUserScript(WKUserScript(source: customScript, injectionTime: .atDocumentStart, forMainFrameOnly: false))
 
         return config
     }

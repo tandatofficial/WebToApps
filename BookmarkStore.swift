@@ -1,11 +1,19 @@
 import Foundation
 
+struct SiteShieldSettings: Codable, Equatable {
+    var adBlockEnabled: Bool = true        // Chặn banner, tracking, cờ bạc
+    var autoSkipVideoAds: Bool = false      // Tự động tua video quảng cáo (mặc định TẮT để không bị tua nhầm video chính)
+    var blockPopups: Bool = true           // Chặn nhảy tab popup
+    var antiAdblockDefuser: Bool = true    // Bỏ qua cảnh báo phát hiện adblock
+}
+
 struct Bookmark: Identifiable, Codable, Equatable {
     var id: UUID = UUID()
     var title: String
     var url: String
     var domain: String
     var isSpecialApp: Bool = false
+    var shieldSettings: SiteShieldSettings = SiteShieldSettings()
 
     var faviconURL: URL? {
         if isSpecialApp && domain.contains("youtube") {
@@ -24,9 +32,9 @@ class BookmarkStore: ObservableObject {
         if bookmarks.isEmpty {
             bookmarks = [
                 Bookmark(title: "YouTube", url: "https://m.youtube.com", domain: "youtube.com", isSpecialApp: true),
+                Bookmark(title: "Phim NguonC", url: "https://phim.nguonc.com", domain: "phim.nguonc.com"),
                 Bookmark(title: "VnExpress", url: "https://vnexpress.net", domain: "vnexpress.net"),
-                Bookmark(title: "Google", url: "https://google.com", domain: "google.com"),
-                Bookmark(title: "Reddit", url: "https://reddit.com", domain: "reddit.com")
+                Bookmark(title: "Google", url: "https://google.com", domain: "google.com")
             ]
             save()
         }
@@ -49,13 +57,15 @@ class BookmarkStore: ObservableObject {
         save()
     }
 
-    func deleteBookmark(byId id: UUID) {
-        bookmarks.removeAll { $0.id == id }
-        save()
+    func updateSettings(for id: UUID, newSettings: SiteShieldSettings) {
+        if let idx = bookmarks.firstIndex(where: { $0.id == id }) {
+            bookmarks[idx].shieldSettings = newSettings
+            save()
+        }
     }
 
-    func deleteBookmark(at offsets: IndexSet) {
-        bookmarks.remove(atOffsets: offsets)
+    func deleteBookmark(byId id: UUID) {
+        bookmarks.removeAll { $0.id == id }
         save()
     }
 
