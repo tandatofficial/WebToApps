@@ -50,6 +50,9 @@ struct HomeBookmarkView: View {
                         .background(Color(red: 0.18, green: 0.82, blue: 0.35).opacity(0.15))
                         .cornerRadius(12)
                     }
+                    .sheet(isPresented: $showExtensionSettings) {
+                        ExtensionSettingsView()
+                    }
 
                     // Nút Sửa / Xóa Bookmark
                     Button(action: {
@@ -196,9 +199,6 @@ struct HomeBookmarkView: View {
 
                 Spacer()
             }
-        }
-        .sheet(isPresented: $showExtensionSettings) {
-            ExtensionSettingsView()
         }
         .sheet(item: $editingShieldBookmark) { item in
             SiteShieldSettingsSheet(
